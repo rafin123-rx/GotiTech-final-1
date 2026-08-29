@@ -19,14 +19,116 @@
 <section class="grid"><div class="card"><div class="sectionHead"><div><h2>Orders & Delivery</h2><p>View everything you have ordered and where it will be delivered.</p></div></div><button class="ordersBtn" id="ordersBtn" onclick="toggleOrders()"><span class="ico">🛍️</span><span><strong>My Orders</strong><small id="orderSub">Tap to view your order history</small></span><span id="arrow" class="arrow">⌄</span></button><div id="orders" class="orders"></div></div>
 <div class="card"><h2 class="sideTitle">Account Details</h2><div class="infoRow"><div class="miniIcon">👤</div><div><small>Customer name</small><b id="sideName">—</b></div></div><div class="infoRow"><div class="miniIcon">✉️</div><div><small>Email address</small><b id="sideEmail">—</b></div></div><div class="infoRow"><div class="miniIcon">📱</div><div><small>Mobile number</small><b id="sidePhone">—</b></div></div><button class="logout" onclick="logout()">↪ Log out from this account</button><div class="secure">🔒 Your account is currently signed in on this browser.</div></div></section></main>
 <script>
+function normalizeOrderStatus(status){
+  const s=String(status||'Pending').toLowerCase();
+  const map={pending:'Pending',packaging:'Packaging',shepping:'Shipping',shipping:'Shipping',deliverd:'Delivered',delivered:'Delivered',return:'Return',returned:'Return',cancle:'Cancelled',cancelled:'Cancelled',cancel:'Cancelled'};
+  return map[s]||'Pending';
+}
+function orderStatusStyle(status){
+  const s=normalizeOrderStatus(status);
+  const styles={
+    Pending:'background:#fff7e6;color:#a96800;border:1px solid #f1d49a',
+    Packaging:'background:#eef4ff;color:#2458a6;border:1px solid #bcd0ff',
+    Shipping:'background:#f1ecff;color:#6241ad;border:1px solid #d0c3ff',
+    Delivered:'background:#eaf9ef;color:#16723b;border:1px solid #b6e7c6',
+    Return:'background:#fff6e8;color:#a65b00;border:1px solid #ffd49a',
+    Cancelled:'background:#fff0f0;color:#b42318;border:1px solid #ffc5c2'
+  };
+  return styles[s];
+}
+function statusBadge(status){
+  const s=normalizeOrderStatus(status);
+  const icons={Pending:'⏳',Packaging:'📦',Shipping:'🚚',Delivered:'✓',Return:'↩️',Cancelled:'✕'};
+  return `<span class="profile-order-status" style="display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border-radius:999px;font-size:12px;font-weight:800;${orderStatusStyle(s)}">${icons[s]} ${s}</span>`;
+}
+
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-function getUser(){try{const g=JSON.parse(localStorage.getItem('gotitech_google_user')||'null');if(g&&(g.email||g.name))return {...g,type:'google'}}catch(e){}try{const c=JSON.parse(localStorage.getItem('gotitech_customer_user')||'null');if(c&&(c.phone||c.email||c.name))return {...c,type:'customer'}}catch(e){}const legacy=localStorage.getItem('gotitech_user');return legacy?{name:legacy.includes('@')?legacy.split('@')[0]:legacy,email:legacy,picture:'',type:'legacy'}:null}
+function safeJSON(key){try{return JSON.parse(localStorage.getItem(key)||'null')}catch(e){return null}}
+function getUser(){
+  const active=safeJSON('gotitech_active_customer');
+  if(active&&(active.name||active.phone||active.email))return {...active,type:'active'};
+  const g=safeJSON('gotitech_google_user');
+  if(g&&(g.email||g.name))return {...g,type:'google'};
+  const c=safeJSON('gotitech_customer_user');
+  if(c&&(c.phone||c.email||c.name))return {...c,type:'customer'};
+  const legacy=localStorage.getItem('gotitech_user');
+  if(legacy)return {name:legacy.includes('@')?legacy.split('@')[0]:legacy,email:legacy,picture:'',type:'legacy'};
+  return null;
+}
 const u=getUser();
-if(!u){document.body.innerHTML='<div style="min-height:100vh;display:grid;place-items:center;padding:20px;font-family:Arial;background:#f4f7fb"><div style="max-width:430px;text-align:center;background:#fff;padding:35px;border-radius:24px;box-shadow:0 15px 40px #0002"><div style="font-size:48px">🔐</div><h2>Sign in to view your account</h2><p style="color:#667085">Your profile is ready. Please sign in first to access your orders.</p><a href="index.html" style="display:inline-block;background:#101827;color:#fff;padding:13px 20px;border-radius:12px;text-decoration:none;font-weight:700">Go to GotiTech</a></div></div>';throw new Error('No signed-in user')}
-const displayName=u.name||'GotiTech Customer';document.getElementById('name').textContent=displayName;document.getElementById('sideName').textContent=displayName;document.getElementById('email').textContent=u.email||'No email linked to this account';document.getElementById('sideEmail').textContent=u.email||'Not available';document.getElementById('sidePhone').textContent=u.phone||'Not available';
-const av=document.getElementById('avatar');if(u.picture){const img=new Image();img.onload=()=>{av.textContent='';av.appendChild(img)};img.onerror=()=>{av.textContent=(displayName[0]||'G').toUpperCase()};img.src=u.picture;img.alt=displayName}else av.textContent=(displayName[0]||'G').toUpperCase();
-function renderOrders(){const email=String(u.email||'').toLowerCase(),phone=String(u.phone||'').replace(/\D/g,'');let all=[];try{all=JSON.parse(localStorage.getItem('gotitech_orders')||'[]')}catch(e){}const mine=all.filter(o=>{const oe=String(o.customerEmail||o.email||'').toLowerCase(),op=String(o.phone||o.customerPhone||'').replace(/\D/g,'');return (email&&oe===email)||(phone&&op===phone)});document.getElementById('orderSub').textContent=mine.length?`${mine.length} order${mine.length>1?'s':''} found in your account`:'Tap to view your order history';const box=document.getElementById('orders');if(!mine.length){box.innerHTML='<div class="empty"><div class="box">📦</div><b>No orders yet</b><div style="margin-top:6px">When you place an order, its products and delivery address will appear here.</div></div>';return}box.innerHTML=mine.map(o=>{const loc=[o.division,o.district].filter(Boolean).join(', ')||o.locationText||'Location not available';return `<article class="order"><div class="orderTop"><div><div class="oid">Order ${esc(o.id||'')}</div><div class="date">${esc(o.createdAt||'')}</div></div><span class="tag">CASH ON DELIVERY</span></div><div class="items">${(o.items||[]).map(i=>`<div class="item"><div><b>${esc(i.name)}</b>${i.listingNo?` <small>• ${esc(i.listingNo)}</small>`:''}<br><small>Quantity: ${Number(i.quantity||1)}</small></div><div><b>৳${(Number(i.price||0)*Number(i.quantity||1)).toLocaleString('en-BD')}</b></div></div>`).join('')}</div><div class="location"><b>📍 Delivery address</b><br>${esc(loc)}${o.address?`<br>${esc(o.address)}`:''}</div><div class="total"><span>Order total</span><strong>৳${Number(o.total||0).toLocaleString('en-BD')}</strong></div></article>`}).join('')}
-function toggleOrders(){const box=document.getElementById('orders'),btn=document.getElementById('ordersBtn'),arrow=document.getElementById('arrow'),open=box.classList.contains('open');box.classList.toggle('open',!open);arrow.textContent=open?'⌄':'⌃';btn.setAttribute('aria-expanded',String(!open))}
-function logout(){localStorage.removeItem('gotitech_google_user');localStorage.removeItem('gotitech_customer_user');localStorage.removeItem('gotitech_user');location.href='index.html'}
-renderOrders();
+if(!u){
+  document.getElementById('name').textContent='You are not signed in';
+  document.getElementById('email').textContent='Sign in from GotiTech to view your profile and orders.';
+  document.getElementById('sideName').textContent='Sign in required';
+  document.getElementById('sideEmail').textContent='—';
+  document.getElementById('sidePhone').textContent='—';
+  document.getElementById('avatar').textContent='🔐';
+  document.getElementById('ordersBtn').onclick=()=>location.href='index.html';
+  document.getElementById('ordersBtn').querySelector('strong').textContent='Sign in to view My Orders';
+  document.getElementById('orderSub').textContent='Your account and orders will appear here after sign in';
+  document.getElementById('orders').classList.add('open');
+  document.getElementById('orders').innerHTML='<div class="empty"><div class="box">🔐</div><b>Please sign in first</b><div style="margin-top:6px">This page will stay open. Use the button above to return to the shop and sign in.</div></div>';
+  document.querySelector('.logout').style.display='none';
+}else{
+  localStorage.setItem('gotitech_active_customer',JSON.stringify({name:u.name||'',phone:u.phone||'',email:u.email||'',picture:u.picture||''}));
+  const displayName=u.name||'GotiTech Customer';
+  document.getElementById('name').textContent=displayName;
+  document.getElementById('sideName').textContent=displayName;
+  document.getElementById('email').textContent=u.email||'Mobile account • Email not linked';
+  document.getElementById('sideEmail').textContent=u.email||'Not linked to this account';
+  document.getElementById('sidePhone').textContent=u.phone||'Not available';
+  const av=document.getElementById('avatar');
+  if(u.picture){const img=new Image();img.onload=()=>{av.textContent='';av.appendChild(img)};img.onerror=()=>{av.textContent=(displayName[0]||'G').toUpperCase()};img.src=u.picture;img.alt=displayName}else av.textContent=(displayName[0]||'G').toUpperCase();
+  function renderOrders(){
+    function normPhone(v){
+      v=String(v||'').replace(/\D/g,'');
+      if(v.startsWith('880'))v='0'+v.slice(2);
+      return v;
+    }
+    const email=String(u.email||'').trim().toLowerCase();
+    const phone=normPhone(u.phone||'');
+    const myKeys=[
+      email ? 'email:'+email : '',
+      phone ? 'phone:'+phone : ''
+    ].filter(Boolean);
+    let all=safeJSON('gotitech_orders')||[];
+
+    // Migration: old orders may have been saved before customerKey was added.
+    // If their checkout phone matches the signed-in account, attach them to this account.
+    let changed=false;
+    all=all.map(o=>{
+      if(!o||o.customerKey)return o;
+      const oe=String(o.customerEmail||o.email||'').trim().toLowerCase();
+      const op=normPhone(o.customerPhone||o.phone||'');
+      if((email&&oe===email)||(phone&&op===phone)){
+        changed=true;
+        return {...o,
+          customerEmail:o.customerEmail||email,
+          customerPhone:normPhone(o.customerPhone||phone),
+          customerKey:email?'email:'+email:'phone:'+phone
+        };
+      }
+      return o;
+    });
+    if(changed)localStorage.setItem('gotitech_orders',JSON.stringify(all));
+
+    const mine=all.filter(o=>{
+      const orderKey=String(o.customerKey||'');
+      const oe=String(o.customerEmail||o.email||'').trim().toLowerCase();
+      const accountPhone=normPhone(o.customerPhone||'');
+      const checkoutPhone=normPhone(o.phone||'');
+      const accountId=String(o.accountId||'');
+      if(myKeys.includes(orderKey))return true;
+      if(email&&(oe===email||accountId===email))return true;
+      if(phone&&(accountPhone===phone||checkoutPhone===phone||accountId===phone))return true;
+      return false;
+    });
+    document.getElementById('orderSub').textContent=mine.length?`${mine.length} order${mine.length>1?'s':''} found in your account`:'Tap to view your order history';
+    const box=document.getElementById('orders');
+    if(!mine.length){box.innerHTML='<div class="empty"><div class="box">📦</div><b>No orders yet</b><div style="margin-top:6px">When you place an order, its products and delivery address will appear here.</div></div>';return}
+    box.innerHTML=mine.map(o=>{const loc=[o.division,o.district].filter(Boolean).join(', ')||o.locationText||'Location not available';return `<article class="order"><div class="orderTop"><div><div class="oid">Order ${esc(o.id||'')}</div><div class="date">${esc(o.createdAt||'')}</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="tag">CASH ON DELIVERY</span>${statusBadge(o.status)}</div></div><div class="items">${(o.items||[]).map(i=>`<div class="item"><div><b>${esc(i.name)}</b>${i.listingNo?` <small>• ${esc(i.listingNo)}</small>`:''}<br><small>Quantity: ${Number(i.quantity||1)}</small></div><div><b>৳${(Number(i.price||0)*Number(i.quantity||1)).toLocaleString('en-BD')}</b></div></div>`).join('')}</div><div class="location"><b>📍 Delivery address</b><br>${esc(loc)}${o.address?`<br>${esc(o.address)}`:''}</div><div class="total"><span>Order total</span><strong>৳${Number(o.total||0).toLocaleString('en-BD')}</strong></div></article>`}).join('')}
+  function toggleOrders(){const box=document.getElementById('orders'),btn=document.getElementById('ordersBtn'),arrow=document.getElementById('arrow'),open=box.classList.contains('open');box.classList.toggle('open',!open);arrow.textContent=open?'⌄':'⌃';btn.setAttribute('aria-expanded',String(!open))}
+  function logout(){['gotitech_active_customer','gotitech_google_user','gotitech_customer_user','gotitech_user'].forEach(k=>localStorage.removeItem(k));location.href='index.html'}
+  window.toggleOrders=toggleOrders;window.logout=logout;renderOrders();
+}
 </script></body></html>
